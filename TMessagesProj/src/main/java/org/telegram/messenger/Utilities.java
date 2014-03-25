@@ -15,23 +15,22 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
+import android.graphics.Point;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
-import android.os.Handler;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.text.Html;
 import android.text.SpannableStringBuilder;
 import android.text.format.DateFormat;
-import android.util.AttributeSet;
 import android.util.Base64;
+import android.view.Display;
 import android.view.View;
+import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 
-import org.telegram.TL.TLClassStore;
-import org.telegram.TL.TLObject;
 import org.telegram.ui.ApplicationLoader;
 
 import java.io.ByteArrayInputStream;
@@ -62,9 +61,9 @@ import java.util.zip.GZIPOutputStream;
 import javax.crypto.Cipher;
 
 public class Utilities {
-    public static Handler applicationHandler;
     public static int statusBarHeight = 0;
     public static float density = 1;
+    public static Point displaySize = new Point();
     public static boolean isRTL = false;
     public static Pattern pattern = Pattern.compile("[0-9]+");
     private final static Integer lock = 1;
@@ -78,14 +77,75 @@ public class Utilities {
         public long p, q;
     }
 
-    public static DispatchQueue stageQueue = new DispatchQueue("stageQueue");
-    public static DispatchQueue globalQueue = new DispatchQueue("globalQueue");
-    public static DispatchQueue cacheOutQueue = new DispatchQueue("cacheOutQueue");
-    public static DispatchQueue imageLoadQueue = new DispatchQueue("imageLoadQueue");
-    public static DispatchQueue fileUploadQueue = new DispatchQueue("fileUploadQueue");
+    public static volatile DispatchQueue stageQueue = new DispatchQueue("stageQueue");
+    public static volatile DispatchQueue globalQueue = new DispatchQueue("globalQueue");
+    public static volatile DispatchQueue cacheOutQueue = new DispatchQueue("cacheOutQueue");
+    public static volatile DispatchQueue imageLoadQueue = new DispatchQueue("imageLoadQueue");
+    public static volatile DispatchQueue fileUploadQueue = new DispatchQueue("fileUploadQueue");
+
+    public static FastDateFormat formatterDay;
+    public static FastDateFormat formatterWeek;
+    public static FastDateFormat formatterMonth;
+    public static FastDateFormat formatterYear;
+    public static FastDateFormat formatterYearMax;
+    public static FastDateFormat chatDate;
+    public static FastDateFormat chatFullDate;
+
+    public static int[] arrColors = {0xffee4928, 0xff41a903, 0xffe09602, 0xff0f94ed, 0xff8f3bf7, 0xfffc4380, 0xff00a1c4, 0xffeb7002};
+    public static int[] arrUsersAvatars = {
+            R.drawable.user_red,
+            R.drawable.user_green,
+            R.drawable.user_yellow,
+            R.drawable.user_blue,
+            R.drawable.user_violet,
+            R.drawable.user_pink,
+            R.drawable.user_aqua,
+            R.drawable.user_orange};
+
+    public static int[] arrGroupsAvatars = {
+            R.drawable.group_green,
+            R.drawable.group_red,
+            R.drawable.group_blue,
+            R.drawable.group_yellow};
+
+    public static int externalCacheNotAvailableState = 0;
+
+    final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
+
+    private static final Hashtable<String, Typeface> cache = new Hashtable<String, Typeface>();
+
+    public static ProgressDialog progressDialog;
+
+    static {
+        density = ApplicationLoader.applicationContext.getResources().getDisplayMetrics().density;
+        SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("primes", Context.MODE_PRIVATE);
+        String primes = preferences.getString("primes", null);
+        if (primes == null) {
+            goodPrimes.add("C71CAEB9C6B1C9048E6C522F70F13F73980D40238E3E21C14934D037563D930F48198A0AA7C14058229493D22530F4DBFA336F6E0AC925139543AED44CCE7C3720FD51F69458705AC68CD4FE6B6B13ABDC9746512969328454F18FAF8C595F642477FE96BB2A941D5BCD1D4AC8CC49880708FA9B378E3C4F3A9060BEE67CF9A4A4A695811051907E162753B56B0F6B410DBA74D8A84B2A14B3144E0EF1284754FD17ED950D5965B4B9DD46582DB1178D169C6BC465B0D6FF9CA3928FEF5B9AE4E418FC15E83EBEA0F87FA9FF5EED70050DED2849F47BF959D956850CE929851F0D8115F635B105EE2E4E15D04B2454BF6F4FADF034B10403119CD8E3B92FCC5B");
+        } else {
+            try {
+                byte[] bytes = Base64.decode(primes, Base64.DEFAULT);
+                if (bytes != null) {
+                    SerializedData data = new SerializedData(bytes);
+                    int count = data.readInt32();
+                    for (int a = 0; a < count; a++) {
+                        goodPrimes.add(data.readString());
+                    }
+                }
+            } catch (Exception e) {
+                FileLog.e("tmessages", e);
+                goodPrimes.clear();
+                goodPrimes.add("C71CAEB9C6B1C9048E6C522F70F13F73980D40238E3E21C14934D037563D930F48198A0AA7C14058229493D22530F4DBFA336F6E0AC925139543AED44CCE7C3720FD51F69458705AC68CD4FE6B6B13ABDC9746512969328454F18FAF8C595F642477FE96BB2A941D5BCD1D4AC8CC49880708FA9B378E3C4F3A9060BEE67CF9A4A4A695811051907E162753B56B0F6B410DBA74D8A84B2A14B3144E0EF1284754FD17ED950D5965B4B9DD46582DB1178D169C6BC465B0D6FF9CA3928FEF5B9AE4E418FC15E83EBEA0F87FA9FF5EED70050DED2849F47BF959D956850CE929851F0D8115F635B105EE2E4E15D04B2454BF6F4FADF034B10403119CD8E3B92FCC5B");
+            }
+        }
+
+        recreateFormatters();
+        checkDisplaySize();
+    }
 
     public native static long doPQNative(long _what);
-    public native static byte[] aesIgeEncryption(byte[] _what, byte[] _key, byte[] _iv, boolean encrypt, boolean changeIv);
+    public native static byte[] aesIgeEncryption(byte[] _what, byte[] _key, byte[] _iv, boolean encrypt, boolean changeIv, int len);
+    public native static void aesIgeEncryption2(ByteBuffer _what, byte[] _key, byte[] _iv, boolean encrypt, boolean changeIv, int len);
 
     public static boolean isWaitingForSms() {
         boolean value = false;
@@ -111,34 +171,14 @@ public class Utilities {
         return val;
     }
 
-    static {
-        density = ApplicationLoader.applicationContext.getResources().getDisplayMetrics().density;
-        SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("primes", Context.MODE_PRIVATE);
-        String primes = preferences.getString("primes", null);
-        if (primes == null) {
-            goodPrimes.add("C71CAEB9C6B1C9048E6C522F70F13F73980D40238E3E21C14934D037563D930F48198A0AA7C14058229493D22530F4DBFA336F6E0AC925139543AED44CCE7C3720FD51F69458705AC68CD4FE6B6B13ABDC9746512969328454F18FAF8C595F642477FE96BB2A941D5BCD1D4AC8CC49880708FA9B378E3C4F3A9060BEE67CF9A4A4A695811051907E162753B56B0F6B410DBA74D8A84B2A14B3144E0EF1284754FD17ED950D5965B4B9DD46582DB1178D169C6BC465B0D6FF9CA3928FEF5B9AE4E418FC15E83EBEA0F87FA9FF5EED70050DED2849F47BF959D956850CE929851F0D8115F635B105EE2E4E15D04B2454BF6F4FADF034B10403119CD8E3B92FCC5B");
-        } else {
-            try {
-                byte[] bytes = Base64.decode(primes, Base64.DEFAULT);
-                if (bytes != null) {
-                    SerializedData data = new SerializedData(bytes);
-                    int count = data.readInt32();
-                    for (int a = 0; a < count; a++) {
-                        goodPrimes.add(data.readString());
-                    }
-                }
-            } catch (Exception e) {
-                FileLog.e("tmessages", e);
-                goodPrimes.clear();
-                goodPrimes.add("C71CAEB9C6B1C9048E6C522F70F13F73980D40238E3E21C14934D037563D930F48198A0AA7C14058229493D22530F4DBFA336F6E0AC925139543AED44CCE7C3720FD51F69458705AC68CD4FE6B6B13ABDC9746512969328454F18FAF8C595F642477FE96BB2A941D5BCD1D4AC8CC49880708FA9B378E3C4F3A9060BEE67CF9A4A4A695811051907E162753B56B0F6B410DBA74D8A84B2A14B3144E0EF1284754FD17ED950D5965B4B9DD46582DB1178D169C6BC465B0D6FF9CA3928FEF5B9AE4E418FC15E83EBEA0F87FA9FF5EED70050DED2849F47BF959D956850CE929851F0D8115F635B105EE2E4E15D04B2454BF6F4FADF034B10403119CD8E3B92FCC5B");
-            }
+    public static String parseIntToString(String value) {
+        Matcher matcher = pattern.matcher(value);
+        if (matcher.find()) {
+            return matcher.group(0);
         }
-        System.loadLibrary("tmessages");
+        return null;
     }
 
-    static final Class<?>[] constructorSignature = new Class[] {Context.class, AttributeSet.class};
-
-    public static int externalCacheNotAvailableState = 0;
     public static File getCacheDir() {
         if (externalCacheNotAvailableState == 1 || externalCacheNotAvailableState == 0 && Environment.getExternalStorageState().startsWith(Environment.MEDIA_MOUNTED)) {
             externalCacheNotAvailableState = 1;
@@ -148,7 +188,6 @@ public class Utilities {
         return ApplicationLoader.applicationContext.getCacheDir();
     }
 
-    final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
     public static String bytesToHex(byte[] bytes) {
         char[] hexChars = new char[bytes.length * 2];
         int v;
@@ -162,6 +201,10 @@ public class Utilities {
 
     public static int dp(int value) {
         return (int)(density * value);
+    }
+
+    public static int dpf(float value) {
+        return (int)Math.ceil(density * value);
     }
 
     public static boolean isGoodPrime(byte[] prime, int g) {
@@ -275,6 +318,23 @@ public class Utilities {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-1");
             md.update(convertme, offset, len);
+            return md.digest();
+        } catch (Exception e) {
+            FileLog.e("tmessages", e);
+        }
+        return null;
+    }
+
+    public static byte[] computeSHA1(ByteBuffer convertme, int offset, int len) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-1");
+            int oldp = convertme.position();
+            int oldl = convertme.limit();
+            convertme.position(offset);
+            convertme.limit(len);
+            md.update(convertme);
+            convertme.position(oldp);
+            convertme.limit(oldl);
             return md.digest();
         } catch (Exception e) {
             FileLog.e("tmessages", e);
@@ -415,10 +475,6 @@ public class Utilities {
         return packedData;
     }
 
-
-    private static final String TAG = "Typefaces";
-    private static final Hashtable<String, Typeface> cache = new Hashtable<String, Typeface>();
-
     public static Typeface getTypeface(String assetPath) {
         synchronized (cache) {
             if (!cache.containsKey(assetPath)) {
@@ -427,7 +483,7 @@ public class Utilities {
                             assetPath);
                     cache.put(assetPath, t);
                 } catch (Exception e) {
-                    FileLog.e(TAG, "Could not get typeface '" + assetPath + "' because " + e.getMessage());
+                    FileLog.e("Typefaces", "Could not get typeface '" + assetPath + "' because " + e.getMessage());
                     return null;
                 }
             }
@@ -464,7 +520,6 @@ public class Utilities {
         imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
     }
 
-    public static ProgressDialog progressDialog;
     public static void ShowProgressDialog(final Activity activity, final String message) {
         activity.runOnUiThread(new Runnable() {
             @Override
@@ -481,14 +536,6 @@ public class Utilities {
             }
         });
     }
-
-    public static FastDateFormat formatterDay;
-    public static FastDateFormat formatterWeek;
-    public static FastDateFormat formatterMonth;
-    public static FastDateFormat formatterYear;
-    public static FastDateFormat formatterYearMax;
-    public static FastDateFormat chatDate;
-    public static FastDateFormat chatFullDate;
 
     public static void recreateFormatters() {
         Locale locale = Locale.getDefault();
@@ -533,8 +580,23 @@ public class Utilities {
         }
     }
 
-    static {
-        recreateFormatters();
+    public static void checkDisplaySize() {
+        try {
+            WindowManager manager = (WindowManager)ApplicationLoader.applicationContext.getSystemService(Context.WINDOW_SERVICE);
+            if (manager != null) {
+                Display display = manager.getDefaultDisplay();
+                if (display != null) {
+                    if(android.os.Build.VERSION.SDK_INT < 13) {
+                        displaySize.set(display.getWidth(), display.getHeight());
+                    } else {
+                        display.getSize(displaySize);
+                    }
+                    FileLog.e("tmessages", "display size = " + displaySize.x + " " + displaySize.y);
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e("tmessages", e);
+        }
     }
 
     public static String formatDateChat(long date) {
@@ -578,13 +640,13 @@ public class Utilities {
         int dateYear = rightNow.get(Calendar.YEAR);
 
         if (dateDay == day && year == dateYear) {
-            return String.format("%s %s %s", ApplicationLoader.applicationContext.getString(R.string.LastSeen), ApplicationLoader.applicationContext.getString(R.string.TodayAt), formatterDay.format(new Date(date * 1000)));
+            return String.format("%s %s %s", LocaleController.getString("LastSeen", R.string.LastSeen), LocaleController.getString("TodayAt", R.string.TodayAt), formatterDay.format(new Date(date * 1000)));
         } else if (dateDay + 1 == day && year == dateYear) {
-            return String.format("%s %s %s", ApplicationLoader.applicationContext.getString(R.string.LastSeen), ApplicationLoader.applicationContext.getString(R.string.YesterdayAt), formatterDay.format(new Date(date * 1000)));
+            return String.format("%s %s %s", LocaleController.getString("LastSeen", R.string.LastSeen), LocaleController.getString("YesterdayAt", R.string.YesterdayAt), formatterDay.format(new Date(date * 1000)));
         } else if (year == dateYear) {
-            return String.format("%s %s %s %s", ApplicationLoader.applicationContext.getString(R.string.LastSeenDate), formatterMonth.format(new Date(date * 1000)), ApplicationLoader.applicationContext.getString(R.string.OtherAt), formatterDay.format(new Date(date * 1000)));
+            return String.format("%s %s %s %s", LocaleController.getString("LastSeenDate", R.string.LastSeenDate), formatterMonth.format(new Date(date * 1000)), LocaleController.getString("OtherAt", R.string.OtherAt), formatterDay.format(new Date(date * 1000)));
         } else {
-            return String.format("%s %s %s %s", ApplicationLoader.applicationContext.getString(R.string.LastSeenDate), formatterYear.format(new Date(date * 1000)), ApplicationLoader.applicationContext.getString(R.string.OtherAt), formatterDay.format(new Date(date * 1000)));
+            return String.format("%s %s %s %s", LocaleController.getString("LastSeenDate", R.string.LastSeenDate), formatterYear.format(new Date(date * 1000)), LocaleController.getString("OtherAt", R.string.OtherAt), formatterDay.format(new Date(date * 1000)));
         }
     }
 
@@ -626,26 +688,9 @@ public class Utilities {
 
     public static void RunOnUIThread(Runnable runnable) {
         synchronized (lock) {
-            applicationHandler.post(runnable);
+            ApplicationLoader.applicationHandler.post(runnable);
         }
     }
-
-    public static int[] arrColors = {0xffee4928, 0xff41a903, 0xffe09602, 0xff0f94ed, 0xff8f3bf7, 0xfffc4380, 0xff00a1c4, 0xffeb7002};
-    public static int[] arrUsersAvatars = {
-            R.drawable.user_red,
-            R.drawable.user_green,
-            R.drawable.user_yellow,
-            R.drawable.user_blue,
-            R.drawable.user_violet,
-            R.drawable.user_pink,
-            R.drawable.user_aqua,
-            R.drawable.user_orange};
-
-    public static int[] arrGroupsAvatars = {
-            R.drawable.group_green,
-            R.drawable.group_red,
-            R.drawable.group_blue,
-            R.drawable.group_yellow};
 
     public static int getColorIndex(int id) {
         int[] arr;
@@ -678,14 +723,14 @@ public class Utilities {
     }
 
     public static int getColorForId(int id) {
-        if (id == 333000) {
+        if (id / 1000 == 333) {
             return 0xff0f94ed;
         }
         return arrColors[getColorIndex(id)];
     }
 
     public static int getUserAvatarForId(int id) {
-        if (id == 333000) {
+        if (id / 1000 == 333) {
             return R.drawable.telegram_avatar;
         }
         return arrUsersAvatars[getColorIndex(id)];
@@ -714,11 +759,9 @@ public class Utilities {
         if (fromPath == null) {
             return;
         }
-        Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
         File f = new File(fromPath);
         Uri contentUri = Uri.fromFile(f);
-        mediaScanIntent.setData(contentUri);
-        ApplicationLoader.applicationContext.sendBroadcast(mediaScanIntent);
+        addMediaToGallery(contentUri);
     }
 
     public static void addMediaToGallery(Uri uri) {
@@ -807,9 +850,12 @@ public class Utilities {
                 final int column_index = cursor.getColumnIndexOrThrow(column);
                 return cursor.getString(column_index);
             }
+        } catch (Exception e) {
+            FileLog.e("tmessages", e);
         } finally {
-            if (cursor != null)
+            if (cursor != null) {
                 cursor.close();
+            }
         }
         return null;
     }
@@ -882,11 +928,6 @@ public class Utilities {
             String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
             String imageFileName = "VID_" + timeStamp + "_";
             return File.createTempFile(imageFileName, ".mp4", storageDir);
-            /*
-
-            String fileName = "VID" + id + ".mp4";
-            return new File(ApplicationLoader.applicationContext.getCacheDir(), fileName);
-             */
         } catch (Exception e) {
             FileLog.e("tmessages", e);
         }
@@ -900,7 +941,7 @@ public class Utilities {
         } else if (result.length() != 0 && lastName.length() != 0) {
             result += " " + lastName;
         }
-        return result;
+        return result.trim();
     }
 
     public static String formatFileSize(long size) {
@@ -935,5 +976,28 @@ public class Utilities {
                 return formatterMonth.format(new Date(date * 1000));
             }
         }
+    }
+
+    public static byte[] decodeQuotedPrintable(final byte[] bytes) {
+        if (bytes == null) {
+            return null;
+        }
+        final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        for (int i = 0; i < bytes.length; i++) {
+            final int b = bytes[i];
+            if (b == '=') {
+                try {
+                    final int u = Character.digit((char) bytes[++i], 16);
+                    final int l = Character.digit((char) bytes[++i], 16);
+                    buffer.write((char) ((u << 4) + l));
+                } catch (Exception e) {
+                    FileLog.e("tmessages", e);
+                    return null;
+                }
+            } else {
+                buffer.write(b);
+            }
+        }
+        return buffer.toByteArray();
     }
 }

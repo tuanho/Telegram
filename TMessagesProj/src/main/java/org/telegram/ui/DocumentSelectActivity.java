@@ -29,6 +29,7 @@ import android.widget.ListView;
 import android.widget.TextView;
 
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.Views.BackupImageView;
@@ -79,10 +80,14 @@ public class DocumentSelectActivity extends BaseFragment {
         public void onReceive(Context arg0, Intent intent) {
             Runnable r = new Runnable() {
                 public void run() {
-                    if (currentDir == null){
-                        listRoots();
-                    } else {
-                        listFiles(currentDir);
+                    try {
+                        if (currentDir == null){
+                            listRoots();
+                        } else {
+                            listFiles(currentDir);
+                        }
+                    } catch (Exception e) {
+                        FileLog.e("tmessages", e);
                     }
                 }
             };
@@ -210,7 +215,7 @@ public class DocumentSelectActivity extends BaseFragment {
         actionBar.setDisplayShowCustomEnabled(false);
         actionBar.setSubtitle(null);
         actionBar.setCustomView(null);
-        actionBar.setTitle(getStringEntry(R.string.SelectFile));
+        actionBar.setTitle(LocaleController.getString("SelectFile", R.string.SelectFile));
 
         TextView title = (TextView)parentActivity.findViewById(R.id.action_bar_title);
         if (title == null) {
@@ -236,8 +241,8 @@ public class DocumentSelectActivity extends BaseFragment {
             listAdapter.notifyDataSetChanged();
         }
         firstStart = false;
-        ((ApplicationActivity)parentActivity).showActionBar();
-        ((ApplicationActivity)parentActivity).updateActionBar();
+        ((LaunchActivity)parentActivity).showActionBar();
+        ((LaunchActivity)parentActivity).updateActionBar();
     }
 
     @Override
@@ -279,9 +284,9 @@ public class DocumentSelectActivity extends BaseFragment {
                     items.clear();
                     String state = Environment.getExternalStorageState();
                     if (Environment.MEDIA_SHARED.equals(state)){
-                        emptyView.setText(R.string.UsbActive);
+                        emptyView.setText(LocaleController.getString("UsbActive", R.string.UsbActive));
                     } else {
-                        emptyView.setText(R.string.NotMounted);
+                        emptyView.setText(LocaleController.getString("NotMounted", R.string.NotMounted));
                     }
                     listAdapter.notifyDataSetChanged();
                     return true;
@@ -290,7 +295,7 @@ public class DocumentSelectActivity extends BaseFragment {
             showErrorBox(getString(R.string.AccessError));
             return false;
         }
-        emptyView.setText(R.string.NoFiles);
+        emptyView.setText(LocaleController.getString("NoFiles", R.string.NoFiles));
         File[] files = null;
         try {
             files = dir.listFiles();
@@ -398,7 +403,7 @@ public class DocumentSelectActivity extends BaseFragment {
         }
         ListItem fs = new ListItem();
         fs.title = "/";
-        fs.subtitle = getString(R.string.SystemRoot);
+        fs.subtitle = LocaleController.getString("SystemRoot", R.string.SystemRoot);
         fs.icon = R.drawable.ic_directory;
         fs.file = new File("/");
         items.add(fs);
@@ -412,7 +417,7 @@ public class DocumentSelectActivity extends BaseFragment {
         if (total == 0) {
             return "";
         }
-        return getString(R.string.FreeOfTotal, Utilities.formatFileSize(free), Utilities.formatFileSize(total));
+        return LocaleController.formatString("FreeOfTotal", R.string.FreeOfTotal, Utilities.formatFileSize(free), Utilities.formatFileSize(total));
     }
 
     private class ListAdapter extends BaseAdapter {

@@ -8,9 +8,6 @@
 
 package org.telegram.messenger;
 
-import org.telegram.TL.TLObject;
-import org.telegram.TL.TLRPC;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.math.BigInteger;
@@ -65,7 +62,7 @@ public class FileUploadOperation {
                 FileLog.e("tmessages", e);
             }
         }
-        currentFileId = (long)(MessagesController.random.nextDouble() * Long.MAX_VALUE);
+        currentFileId = MessagesController.random.nextLong();
         try {
             mdEnc = MessageDigest.getInstance("MD5");
         } catch (NoSuchAlgorithmException e) {
@@ -87,7 +84,7 @@ public class FileUploadOperation {
         }
         state = 2;
         if (requestToken != 0) {
-            ConnectionsManager.Instance.cancelRpc(requestToken, true);
+            ConnectionsManager.getInstance().cancelRpc(requestToken, true);
         }
         delegate.didFailedUploadingFile(this);
     }
@@ -134,7 +131,7 @@ public class FileUploadOperation {
             }
             System.arraycopy(readBuffer, 0, sendBuffer, 0, readed);
             if (key != null) {
-                sendBuffer = Utilities.aesIgeEncryption(sendBuffer, key, iv, true, true);
+                sendBuffer = Utilities.aesIgeEncryption(sendBuffer, key, iv, true, true, 0);
             }
             mdEnc.update(sendBuffer, 0, readed + toAdd);
             if (isBigFile) {
@@ -157,7 +154,7 @@ public class FileUploadOperation {
             delegate.didFailedUploadingFile(this);
             return;
         }
-        requestToken = ConnectionsManager.Instance.performRpc(finalRequest, new RPCRequest.RPCRequestDelegate() {
+        requestToken = ConnectionsManager.getInstance().performRpc(finalRequest, new RPCRequest.RPCRequestDelegate() {
                     @Override
                     public void run(TLObject response, TLRPC.TL_error error) {
                         requestToken = 0;

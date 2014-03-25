@@ -12,23 +12,21 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.drawable.Drawable;
-import android.text.Html;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
-import android.util.AttributeSet;
 import android.view.View;
 
 import org.telegram.PhoneFormat.PhoneFormat;
-import org.telegram.TL.TLRPC;
+import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.TLRPC;
 import org.telegram.messenger.ConnectionsManager;
 import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
-import org.telegram.ui.ApplicationLoader;
 import org.telegram.ui.Views.ImageReceiver;
 
 import java.lang.ref.WeakReference;
@@ -56,22 +54,11 @@ public class ChatOrUserCell extends BaseCell {
     private TLRPC.FileLocation lastAvatar = null;
 
     public boolean usePadding = true;
-    public boolean useBoldFont = false;
     public boolean useSeparator = false;
     public float drawAlpha = 1;
 
     public ChatOrUserCell(Context context) {
         super(context);
-        init();
-    }
-
-    public ChatOrUserCell(Context context, AttributeSet attrs) {
-        super(context, attrs);
-        init();
-    }
-
-    public ChatOrUserCell(Context context, AttributeSet attrs, int defStyleAttr) {
-        super(context, attrs, defStyleAttr);
         init();
     }
 
@@ -174,9 +161,6 @@ public class ChatOrUserCell extends BaseCell {
                 int newStatus = 0;
                 if (user.status != null) {
                     newStatus = user.status.expires;
-                    if (lastStatus == 0) {
-                        lastStatus = user.status.was_online;
-                    }
                 }
                 if (newStatus != lastStatus) {
                     continueUpdate = true;
@@ -202,9 +186,6 @@ public class ChatOrUserCell extends BaseCell {
         if (user != null) {
             if (user.status != null) {
                 lastStatus = user.status.expires;
-                if (lastStatus == 0) {
-                    lastStatus = user.status.was_online;
-                }
             } else {
                 lastStatus = 0;
             }
@@ -311,40 +292,31 @@ public class ChatOrUserCell extends BaseCell {
             if (currentName != null) {
                 nameString = currentName;
             } else {
-                if (useBoldFont) {
-                    if (user != null) {
-                        if (user.first_name.length() != 0 && user.last_name.length() != 0) {
-                            nameString = Html.fromHtml(user.first_name + " <b>" + user.last_name + "</b>");
-                        } else if (user.first_name.length() != 0) {
-                            nameString = Html.fromHtml("<b>" + user.first_name + "</b>");
-                        } else {
-                            nameString = Html.fromHtml("<b>" + user.last_name + "</b>");
-                        }
-                    }
-                } else {
-                    String nameString2 = "";
-                    if (chat != null) {
-                        nameString2 = chat.title;
-                    } else if (user != null) {
-                        if (user.id != 333000 && ContactsController.Instance.contactsDict.get(user.id) == null) {
-                            if (ContactsController.Instance.contactsDict.size() == 0 && ContactsController.Instance.loadingContacts) {
-                                nameString2 = Utilities.formatName(user.first_name, user.last_name);
-                            } else {
-                                if (user.phone != null && user.phone.length() != 0) {
-                                    nameString2 = PhoneFormat.Instance.format("+" + user.phone);
-                                } else {
-                                    nameString2 = Utilities.formatName(user.first_name, user.last_name);
-                                }
-                            }
-                        } else {
+                String nameString2 = "";
+                if (chat != null) {
+                    nameString2 = chat.title;
+                } else if (user != null) {
+                    if (user.id / 1000 != 333 && ContactsController.getInstance().contactsDict.get(user.id) == null) {
+                        if (ContactsController.getInstance().contactsDict.size() == 0 && ContactsController.getInstance().loadingContacts) {
                             nameString2 = Utilities.formatName(user.first_name, user.last_name);
+                        } else {
+                            if (user.phone != null && user.phone.length() != 0) {
+                                nameString2 = PhoneFormat.getInstance().format("+" + user.phone);
+                            } else {
+                                nameString2 = Utilities.formatName(user.first_name, user.last_name);
+                            }
                         }
+                    } else {
+                        nameString2 = Utilities.formatName(user.first_name, user.last_name);
                     }
-                    nameString = nameString2.replace("\n", " ");
                 }
+                nameString = nameString2.replace("\n", " ");
             }
             if (nameString.length() == 0) {
-                nameString = ApplicationLoader.applicationContext.getString(R.string.HiddenName);
+                if (user.phone != null && user.phone.length() != 0) {
+                    nameString = PhoneFormat.getInstance().format("+" + user.phone);
+                }
+                nameString = LocaleController.getString("HiddenName", R.string.HiddenName);
             }
             if (encryptedChat != null) {
                 currentNamePaint = nameEncryptedPaint;
@@ -381,19 +353,15 @@ public class ChatOrUserCell extends BaseCell {
                         if (user.status == null) {
                             onlineString = getResources().getString(R.string.Offline);
                         } else {
-                            int currentTime = ConnectionsManager.Instance.getCurrentTime();
-                            if (user.id == UserConfig.clientUserId || user.status.expires > currentTime || user.status.was_online > currentTime) {
+                            int currentTime = ConnectionsManager.getInstance().getCurrentTime();
+                            if (user.id == UserConfig.clientUserId || user.status.expires > currentTime) {
                                 currentOnlinePaint = onlinePaint;
                                 onlineString = getResources().getString(R.string.Online);
                             } else {
-                                if (user.status.was_online <= 10000 && user.status.expires <= 10000) {
+                                if (user.status.expires <= 10000) {
                                     onlineString = getResources().getString(R.string.Invisible);
                                 } else {
-                                    int value = user.status.was_online;
-                                    if (value == 0) {
-                                        value = user.status.expires;
-                                    }
-                                    onlineString = Utilities.formatDateOnline(value);
+                                    onlineString = Utilities.formatDateOnline(user.status.expires);
                                 }
                             }
                         }

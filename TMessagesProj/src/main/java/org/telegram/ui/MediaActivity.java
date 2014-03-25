@@ -27,7 +27,8 @@ import android.widget.BaseAdapter;
 import android.widget.GridView;
 import android.widget.TextView;
 
-import org.telegram.TL.TLRPC;
+import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.TLRPC;
 import org.telegram.messenger.Utilities;
 import org.telegram.objects.MessageObject;
 import org.telegram.messenger.MessagesController;
@@ -36,6 +37,7 @@ import org.telegram.messenger.R;
 import org.telegram.ui.Views.BackupImageView;
 import org.telegram.ui.Views.BaseFragment;
 import org.telegram.ui.Views.OnSwipeTouchListener;
+import org.w3c.dom.Text;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -52,30 +54,33 @@ public class MediaActivity extends BaseFragment implements NotificationCenter.No
     private boolean loading = false;
     private boolean endReached = false;
     private boolean cacheEndReached = false;
-    private int max_id;
+    private int max_id = Integer.MAX_VALUE;
     private View progressView;
-    private View emptyView;
+    private TextView emptyView;
 
     @Override
     public boolean onFragmentCreate() {
         super.onFragmentCreate();
-        NotificationCenter.Instance.addObserver(this, MessagesController.mediaDidLoaded);
-        NotificationCenter.Instance.addObserver(this, MessagesController.messagesDeleted);
-        NotificationCenter.Instance.addObserver(this, MessagesController.didReceivedNewMessages);
-        NotificationCenter.Instance.addObserver(this, MessagesController.messageReceivedByServer);
+        NotificationCenter.getInstance().addObserver(this, MessagesController.mediaDidLoaded);
+        NotificationCenter.getInstance().addObserver(this, MessagesController.messagesDeleted);
+        NotificationCenter.getInstance().addObserver(this, MessagesController.didReceivedNewMessages);
+        NotificationCenter.getInstance().addObserver(this, MessagesController.messageReceivedByServer);
         dialog_id = getArguments().getLong("dialog_id", 0);
+        if (((int)dialog_id) == 0) {
+            max_id = Integer.MIN_VALUE;
+        }
         loading = true;
-        MessagesController.Instance.loadMedia(dialog_id, 0, 50, 0, true, classGuid);
+        MessagesController.getInstance().loadMedia(dialog_id, 0, 50, 0, true, classGuid);
         return true;
     }
 
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
-        NotificationCenter.Instance.removeObserver(this, MessagesController.mediaDidLoaded);
-        NotificationCenter.Instance.removeObserver(this, MessagesController.didReceivedNewMessages);
-        NotificationCenter.Instance.removeObserver(this, MessagesController.messagesDeleted);
-        NotificationCenter.Instance.removeObserver(this, MessagesController.messageReceivedByServer);
+        NotificationCenter.getInstance().removeObserver(this, MessagesController.mediaDidLoaded);
+        NotificationCenter.getInstance().removeObserver(this, MessagesController.didReceivedNewMessages);
+        NotificationCenter.getInstance().removeObserver(this, MessagesController.messagesDeleted);
+        NotificationCenter.getInstance().removeObserver(this, MessagesController.messageReceivedByServer);
     }
 
     @Override
@@ -89,7 +94,8 @@ public class MediaActivity extends BaseFragment implements NotificationCenter.No
         if (fragmentView == null) {
             fragmentView = inflater.inflate(R.layout.media_layout, container, false);
 
-            emptyView = fragmentView.findViewById(R.id.searchEmptyView);
+            emptyView = (TextView)fragmentView.findViewById(R.id.searchEmptyView);
+            emptyView.setText(LocaleController.getString("NoMedia", R.string.NoMedia));
             listView = (GridView)fragmentView.findViewById(R.id.media_grid);
             progressView = fragmentView.findViewById(R.id.progressLayout);
 
@@ -97,8 +103,8 @@ public class MediaActivity extends BaseFragment implements NotificationCenter.No
             listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
                 @Override
                 public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
-                    NotificationCenter.Instance.addToMemCache(54, messages);
-                    NotificationCenter.Instance.addToMemCache(55, i);
+                    NotificationCenter.getInstance().addToMemCache(54, messages);
+                    NotificationCenter.getInstance().addToMemCache(55, i);
                     Intent intent = new Intent(parentActivity, GalleryImageViewer.class);
                     startActivity(intent);
                 }
@@ -121,7 +127,7 @@ public class MediaActivity extends BaseFragment implements NotificationCenter.No
                 public void onScroll(AbsListView absListView, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
                     if (visibleItemCount != 0 && firstVisibleItem + visibleItemCount > totalItemCount - 2 && !loading && !endReached) {
                         loading = true;
-                        MessagesController.Instance.loadMedia(dialog_id, 0, 50, max_id, !cacheEndReached, classGuid);
+                        MessagesController.getInstance().loadMedia(dialog_id, 0, 50, max_id, !cacheEndReached, classGuid);
                     }
                 }
             });
@@ -157,10 +163,15 @@ public class MediaActivity extends BaseFragment implements NotificationCenter.No
                 @SuppressWarnings("uchecked")
                 ArrayList<MessageObject> arr = (ArrayList<MessageObject>)args[2];
                 boolean added = false;
+                boolean enc = ((int)dialog_id) == 0;
                 for (MessageObject message : arr) {
                     if (!messagesDict.containsKey(message.messageOwner.id)) {
-                        if (max_id == 0 || message.messageOwner.id < max_id) {
-                            max_id = message.messageOwner.id;
+                        if (!enc) {
+                            if (message.messageOwner.id > 0) {
+                                max_id = Math.min(message.messageOwner.id, max_id);
+                            }
+                        } else {
+                            max_id = Math.max(message.messageOwner.id, max_id);
                         }
                         messagesDict.put(message.messageOwner.id, message);
                         messages.add(message);
@@ -213,8 +224,13 @@ public class MediaActivity extends BaseFragment implements NotificationCenter.No
                     if (messagesDict.containsKey(obj.messageOwner.id)) {
                         continue;
                     }
-                    if ((max_id == 0 || obj.messageOwner.id < max_id) && obj.messageOwner.id > 0) {
-                        max_id = obj.messageOwner.id;
+                    boolean enc = ((int)dialog_id) == 0;
+                    if (!enc) {
+                        if (obj.messageOwner.id > 0) {
+                            max_id = Math.min(obj.messageOwner.id, max_id);
+                        }
+                    } else {
+                        max_id = Math.max(obj.messageOwner.id, max_id);
                     }
                     messagesDict.put(obj.messageOwner.id, obj);
                     messages.add(0, obj);
@@ -247,7 +263,7 @@ public class MediaActivity extends BaseFragment implements NotificationCenter.No
         actionBar.setDisplayUseLogoEnabled(false);
         actionBar.setDisplayShowCustomEnabled(false);
         actionBar.setCustomView(null);
-        actionBar.setTitle(getStringEntry(R.string.SharedMedia));
+        actionBar.setTitle(LocaleController.getString("SharedMedia", R.string.SharedMedia));
         actionBar.setSubtitle(null);
 
         TextView title = (TextView)parentActivity.findViewById(R.id.action_bar_title);
@@ -271,8 +287,8 @@ public class MediaActivity extends BaseFragment implements NotificationCenter.No
             listAdapter.notifyDataSetChanged();
         }
         firstStart = false;
-        ((ApplicationActivity)parentActivity).showActionBar();
-        ((ApplicationActivity)parentActivity).updateActionBar();
+        ((LaunchActivity)parentActivity).showActionBar();
+        ((LaunchActivity)parentActivity).updateActionBar();
         fixLayout();
     }
 
@@ -288,24 +304,27 @@ public class MediaActivity extends BaseFragment implements NotificationCenter.No
             obs.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
                 @Override
                 public boolean onPreDraw() {
-                    WindowManager manager = (WindowManager)parentActivity.getSystemService(Activity.WINDOW_SERVICE);
-                    int rotation = manager.getDefaultDisplay().getRotation();
+                    if (parentActivity != null) {
+                        WindowManager manager = (WindowManager)parentActivity.getSystemService(Activity.WINDOW_SERVICE);
+                        int rotation = manager.getDefaultDisplay().getRotation();
 
-                    if (rotation == Surface.ROTATION_270 || rotation == Surface.ROTATION_90) {
-                        orientation = 1;
-                        listView.setNumColumns(6);
-                        itemWidth = getResources().getDisplayMetrics().widthPixels / 6 - Utilities.dp(2) * 5;
-                        listView.setColumnWidth(itemWidth);
-                    } else {
-                        orientation = 0;
-                        listView.setNumColumns(4);
-                        itemWidth = getResources().getDisplayMetrics().widthPixels / 4 - Utilities.dp(2) * 3;
-                        listView.setColumnWidth(itemWidth);
+                        if (rotation == Surface.ROTATION_270 || rotation == Surface.ROTATION_90) {
+                            orientation = 1;
+                            listView.setNumColumns(6);
+                            itemWidth = getResources().getDisplayMetrics().widthPixels / 6 - Utilities.dp(2) * 5;
+                            listView.setColumnWidth(itemWidth);
+                        } else {
+                            orientation = 0;
+                            listView.setNumColumns(4);
+                            itemWidth = getResources().getDisplayMetrics().widthPixels / 4 - Utilities.dp(2) * 3;
+                            listView.setColumnWidth(itemWidth);
+                        }
+                        listView.setPadding(listView.getPaddingLeft(), Utilities.dp(4), listView.getPaddingRight(), listView.getPaddingBottom());
+                        listAdapter.notifyDataSetChanged();
                     }
-                    listView.setPadding(listView.getPaddingLeft(), Utilities.dp(4), listView.getPaddingRight(), listView.getPaddingBottom());
-                    listAdapter.notifyDataSetChanged();
-
-                    listView.getViewTreeObserver().removeOnPreDrawListener(this);
+                    if (listView != null) {
+                        listView.getViewTreeObserver().removeOnPreDrawListener(this);
+                    }
 
                     return false;
                 }

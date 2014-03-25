@@ -10,8 +10,10 @@ package org.telegram.ui;
 
 import android.app.Activity;
 import android.app.Application;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -25,17 +27,16 @@ import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesUtil;
 import com.google.android.gms.gcm.GoogleCloudMessaging;
 
-import org.telegram.PhoneFormat.PhoneFormat;
-import org.telegram.messenger.BackgroundService;
+import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.ConnectionsManager;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MessagesController;
-import org.telegram.messenger.MessagesStorage;
+import org.telegram.messenger.NativeLoader;
+import org.telegram.messenger.ScreenReceiver;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.Views.BaseFragment;
 
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Locale;
@@ -45,37 +46,41 @@ public class ApplicationLoader extends Application {
     private GoogleCloudMessaging gcm;
     private AtomicInteger msgId = new AtomicInteger();
     private String regid;
-    private String SENDER_ID = "760348033672";
     public static final String EXTRA_MESSAGE = "message";
     public static final String PROPERTY_REG_ID = "registration_id";
     private static final String PROPERTY_APP_VERSION = "appVersion";
     private static final int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
     public static long lastPauseTime;
     public static Bitmap cachedWallpaper = null;
-    public static Context applicationContext;
     private Locale currentLocale;
 
-    public static ApplicationLoader Instance = null;
+    public static volatile Context applicationContext = null;
+    public static volatile Handler applicationHandler = null;
+    private static volatile boolean applicationInited = false;
 
     public static ArrayList<BaseFragment> fragmentsStack = new ArrayList<BaseFragment>();
 
-    @Override
-    public void onCreate() {
-        super.onCreate();
+    public static void postInitApplication() {
+        if (applicationInited) {
+            return;
+        }
+        applicationInited = true;
 
-        currentLocale = Locale.getDefault();
-        Instance = this;
+        NativeLoader.initNativeLibs(applicationContext);
 
-        java.lang.System.setProperty("java.net.preferIPv4Stack", "true");
-        java.lang.System.setProperty("java.net.preferIPv6Addresses", "false");
-
-        applicationContext = getApplicationContext();
-        Utilities.applicationHandler = new Handler(applicationContext.getMainLooper());
+        try {
+            final IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_ON);
+            filter.addAction(Intent.ACTION_SCREEN_OFF);
+            final BroadcastReceiver mReceiver = new ScreenReceiver();
+            applicationContext.registerReceiver(mReceiver, filter);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         UserConfig.loadConfig();
         if (UserConfig.currentUser != null) {
             boolean changed = false;
-            SharedPreferences preferences = getSharedPreferences("Notifications", MODE_PRIVATE);
+            SharedPreferences preferences = applicationContext.getSharedPreferences("Notifications", MODE_PRIVATE);
             int v = preferences.getInt("v", 0);
             if (v != 1) {
                 SharedPreferences preferences2 = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
@@ -101,9 +106,25 @@ public class ApplicationLoader extends Application {
                 editor.remove("fons_size");
                 editor.commit();
             }
-            MessagesStorage init = MessagesStorage.Instance;
-            MessagesController.Instance.users.put(UserConfig.clientUserId, UserConfig.currentUser);
+
+            MessagesController.getInstance().users.put(UserConfig.clientUserId, UserConfig.currentUser);
+            ConnectionsManager.getInstance().applyCountryPortNumber(UserConfig.currentUser.phone);
         }
+
+        ApplicationLoader app = (ApplicationLoader)ApplicationLoader.applicationContext;
+        app.initPlayServices();
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        lastPauseTime = System.currentTimeMillis();
+        applicationContext = getApplicationContext();
+        applicationHandler = new Handler(applicationContext.getMainLooper());
+        currentLocale = Locale.getDefault();
+
+        java.lang.System.setProperty("java.net.preferIPv4Stack", "true");
+        java.lang.System.setProperty("java.net.preferIPv6Addresses", "false");
 
         try {
             ViewConfiguration config = ViewConfiguration.get(this);
@@ -116,25 +137,7 @@ public class ApplicationLoader extends Application {
             e.printStackTrace();
         }
 
-        if (checkPlayServices()) {
-            gcm = GoogleCloudMessaging.getInstance(this);
-            regid = getRegistrationId(applicationContext);
-
-            if (regid.length() == 0) {
-                registerInBackground();
-            } else {
-                sendRegistrationIdToBackend(false);
-            }
-        } else {
-            FileLog.d("tmessages", "No valid Google Play Services APK found.");
-        }
-
-        PhoneFormat format = PhoneFormat.Instance;
-
-        lastPauseTime = System.currentTimeMillis();
         FileLog.e("tmessages", "start application with time " + lastPauseTime);
-
-        startService(new Intent(this, BackgroundService.class));
     }
 
     @Override
@@ -149,11 +152,27 @@ public class ApplicationLoader extends Application {
             }
             currentLocale = newLocale;
         }
+        Utilities.checkDisplaySize();
     }
 
     public static void resetLastPauseTime() {
         lastPauseTime = 0;
-        ConnectionsManager.Instance.applicationMovedToForeground();
+        ConnectionsManager.getInstance().applicationMovedToForeground();
+    }
+
+    private void initPlayServices() {
+        if (checkPlayServices()) {
+            gcm = GoogleCloudMessaging.getInstance(this);
+            regid = getRegistrationId();
+
+            if (regid.length() == 0) {
+                registerInBackground();
+            } else {
+                sendRegistrationIdToBackend(false);
+            }
+        } else {
+            FileLog.d("tmessages", "No valid Google Play Services APK found.");
+        }
     }
 
     private boolean checkPlayServices() {
@@ -170,8 +189,8 @@ public class ApplicationLoader extends Application {
         return true;*/
     }
 
-    private String getRegistrationId(Context context) {
-        final SharedPreferences prefs = getGCMPreferences(context);
+    private String getRegistrationId() {
+        final SharedPreferences prefs = getGCMPreferences(applicationContext);
         String registrationId = prefs.getString(PROPERTY_REG_ID, "");
         if (registrationId.length() == 0) {
             FileLog.d("tmessages", "Registration not found.");
@@ -210,11 +229,11 @@ public class ApplicationLoader extends Application {
                 while (count < 1000) {
                     try {
                         count++;
-                        regid = gcm.register(SENDER_ID);
+                        regid = gcm.register(BuildVars.GCM_SENDER_ID);
                         sendRegistrationIdToBackend(true);
                         storeRegistrationId(applicationContext, regid);
                         return true;
-                    } catch (IOException e) {
+                    } catch (Exception e) {
                         FileLog.e("tmessages", e);
                     }
                     try {
@@ -242,7 +261,7 @@ public class ApplicationLoader extends Application {
                 Utilities.RunOnUIThread(new Runnable() {
                     @Override
                     public void run() {
-                        MessagesController.Instance.registerForPush(regid);
+                        MessagesController.getInstance().registerForPush(regid);
                     }
                 });
             }
